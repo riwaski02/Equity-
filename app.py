@@ -27,7 +27,7 @@ import streamlit as st
 
 import data as D
 from fed import get_fed_view
-from valuation import ValuationInputs, run_valuation
+from valuation import ValuationInputs, market_consensus_inputs, run_valuation
 
 st.set_page_config(page_title="Equity Dashboard", page_icon="📈", layout="wide")
 
@@ -69,13 +69,43 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Valuation assumptions")
-    inp = ValuationInputs(
-        years=st.slider("Projection years", 3, 10, 5),
-        growth_rate=st.slider("Initial FCF growth", 0.0, 0.30, 0.08, 0.01),
-        terminal_growth=st.slider("Terminal growth", 0.0, 0.05, 0.025, 0.005),
-        discount_rate=st.slider("Discount rate / WACC", 0.04, 0.18, 0.09, 0.005),
-        fair_pe=st.slider("Fair P/E (relative)", 5.0, 40.0, 18.0, 0.5),
+    mode = st.radio(
+        "Assumption source",
+        ["Automatic Mode", "Market Consensus Mode"],
+        help=(
+            "**Automatic Mode** — uses the calculations below, driven by "
+            "Yahoo Finance historical financials and your own sliders.\n\n"
+            "**Market Consensus Mode** — derives WACC, P/E, FCF growth and "
+            "terminal growth from analyst consensus / live market data instead "
+            "of the internal calculations."
+        ),
     )
+
+    if mode == "Automatic Mode":
+        inp = ValuationInputs(
+            years=st.slider("Projection years", 3, 10, 5),
+            growth_rate=st.slider("Initial FCF growth", 0.0, 0.30, 0.08, 0.01),
+            terminal_growth=st.slider("Terminal growth", 0.0, 0.05, 0.025, 0.005),
+            discount_rate=st.slider("Discount rate / WACC", 0.04, 0.18, 0.09, 0.005),
+            fair_pe=st.slider("Fair P/E (relative)", 5.0, 40.0, 18.0, 0.5),
+        )
+    else:
+        # Build inputs from analyst/market consensus. load_stock & get_fed_view
+        # are cached, so calling them here is cheap and consistent with the body.
+        _sd = D.load_stock(ticker)
+        years = st.slider("Projection years", 3, 10, 5,
+                          help="Horizon length stays user-controlled.")
+        if _sd.valid:
+            inp, _consensus_src = market_consensus_inputs(
+                _sd, fed=get_fed_view(), base=ValuationInputs(years=years))
+            inp.years = years
+            st.caption("Consensus assumptions in use:")
+            for label, value in _consensus_src.items():
+                st.markdown(f"- **{label}:** {value}")
+        else:
+            inp = ValuationInputs(years=years)
+            st.warning("Consensus data unavailable for this ticker — "
+                       "falling back to default assumptions.")
     st.divider()
     if st.button("🔄 Refresh data (clear cache)"):
         st.cache_data.clear()

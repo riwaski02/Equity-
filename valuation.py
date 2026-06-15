@@ -64,6 +64,93 @@ def _capm_cost_of_equity(beta: float | None, inp: ValuationInputs) -> float:
     return inp.risk_free + beta * inp.equity_risk_premium
 
 
+def _clamp(x: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, x))
+
+
+def market_consensus_inputs(sd: StockData, fed=None,
+                            base: ValuationInputs | None = None):
+    """
+    Build a ValuationInputs object from analyst/market consensus rather than
+    from the user's sliders.
+
+    Derivations (all transparent, shown in the sidebar):
+      - Risk-free      : live 10Y Treasury yield (FRED, via the Fed panel)
+      - Cost of equity : CAPM  = risk_free + beta * equity_risk_premium
+      - WACC / discount: market-weighted blend of cost of equity and
+                         after-tax cost of debt
+      - Fair P/E       : analyst forward P/E (falls back to trailing P/E)
+      - FCF growth     : analyst earnings-growth estimate (falls back to
+                         revenue growth)
+      - Terminal growth: long-run nominal anchor (~risk-free, capped 2–3%)
+
+    Returns
+    -------
+    (ValuationInputs, dict[str, str])
+        The inputs plus a {label: human-readable value} map of what was used,
+        so the UI can display the consensus assumptions.
+    """
+    base = base or ValuationInputs()
+    info = sd.info
+    sources: dict[str, str] = {}
+
+    # ---- Risk-free from the live 10Y (Fed panel) ----------------------- #
+    risk_free = base.risk_free
+    if fed is not None and getattr(fed, "y10", None):
+        risk_free = fed.y10 / 100.0
+    sources["Risk-free (10Y)"] = f"{risk_free * 100:.2f}%"
+
+    erp = base.equity_risk_premium
+    beta = _safe(info, "beta")
+    beta_used = beta if beta is not None else 1.0
+
+    # ---- Cost of equity (CAPM) ----------------------------------------- #
+    coe = risk_free + beta_used * erp
+    coe = _clamp(coe, 0.05, 0.20)
+    sources["Cost of equity (CAPM)"] = f"{coe * 100:.2f}%  (β={beta_used:.2f})"
+
+    # ---- WACC: weight cost of equity & after-tax cost of debt ---------- #
+    mkt_cap = _safe(info, "marketCap") or 0.0
+    total_debt = _safe(info, "totalDebt") or 0.0
+    cost_of_debt = risk_free + 0.015            # risk-free + a generic spread
+    tax_rate = 0.21
+    after_tax_kd = cost_of_debt * (1 - tax_rate)
+    cap = mkt_cap + total_debt
+    if cap > 0:
+        wacc = (mkt_cap / cap) * coe + (total_debt / cap) * after_tax_kd
+    else:
+        wacc = coe
+    wacc = _clamp(wacc, 0.05, 0.18)
+    sources["WACC"] = f"{wacc * 100:.2f}%"
+
+    # ---- Fair P/E from analyst forward estimate ------------------------ #
+    fair_pe = _safe(info, "forwardPE") or _safe(info, "trailingPE") or base.fair_pe
+    fair_pe = _clamp(float(fair_pe), 5.0, 45.0)
+    sources["Fair P/E (forward)"] = f"{fair_pe:.1f}x"
+
+    # ---- FCF growth from analyst earnings growth ----------------------- #
+    growth = _safe(info, "earningsGrowth", "earningsQuarterlyGrowth",
+                   "revenueGrowth")
+    growth = _clamp(float(growth), 0.0, 0.30) if growth is not None else base.growth_rate
+    sources["FCF growth (analyst)"] = f"{growth * 100:.1f}%"
+
+    # ---- Terminal growth: long-run nominal anchor ---------------------- #
+    terminal = _clamp(risk_free * 0.6, 0.02, 0.03)
+    sources["Terminal growth"] = f"{terminal * 100:.1f}%"
+
+    inp = ValuationInputs(
+        years=base.years,
+        growth_rate=growth,
+        terminal_growth=terminal,
+        discount_rate=wacc,
+        cost_of_equity=coe,
+        fair_pe=fair_pe,
+        risk_free=risk_free,
+        equity_risk_premium=erp,
+    )
+    return inp, sources
+
+
 def _project_and_discount(base_cf: float, growth: float, terminal_growth: float,
                           rate: float, years: int) -> float | None:
     """Standard multi-stage DCF -> present value of explicit period + terminal."""

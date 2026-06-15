@@ -58,6 +58,24 @@ Use the sidebar sliders to tune the valuation assumptions (projection years,
 growth, discount rate / WACC, terminal growth, fair P/E) and watch the
 fair-value estimate update in real time.
 
+### Assumption source: Automatic vs. Market Consensus
+
+In the sidebar's **Valuation assumptions** section there is a switch:
+
+- **Automatic Mode** — uses the sliders, driven by Yahoo Finance historical
+  financials (the default behaviour).
+- **Market Consensus Mode** — ignores the sliders (except the projection
+  horizon) and **derives the assumptions from analyst consensus / live market
+  data**:
+  - **Risk-free** = live 10Y Treasury yield (from the FED panel)
+  - **Cost of equity** = CAPM (`risk-free + β × equity-risk-premium`)
+  - **WACC** = market-weighted blend of cost of equity and after-tax cost of debt
+  - **Fair P/E** = analyst forward P/E
+  - **FCF growth** = analyst earnings-growth estimate
+  - **Terminal growth** = long-run nominal anchor (~risk-free, capped 2–3%)
+
+  The exact values used are listed in the sidebar so nothing is hidden.
+
 ---
 
 ## 🧮 How the "own valuation" works
