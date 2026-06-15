@@ -64,17 +64,21 @@ In the sidebar's **Valuation assumptions** section there is a switch:
 
 - **Automatic Mode** — uses the sliders, driven by Yahoo Finance historical
   financials (the default behaviour).
-- **Market Consensus Mode** — ignores the sliders (except the projection
-  horizon) and **derives the assumptions from analyst consensus / live market
-  data**:
+- **Market Consensus Mode** — **disables all five sliders** (they stay visible,
+  pre-filled with the consensus values) and **derives the assumptions from
+  analyst consensus / live market data**, tuned to realistic ranges so the fair
+  value lands closer to the market price:
+  - **Projection years** = 7 (default within the typical 5–10y range)
   - **Risk-free** = live 10Y Treasury yield (from the FED panel)
-  - **Cost of equity** = CAPM (`risk-free + β × equity-risk-premium`)
-  - **WACC** = market-weighted blend of cost of equity and after-tax cost of debt
-  - **Fair P/E** = analyst forward P/E
-  - **FCF growth** = analyst earnings-growth estimate
+  - **Cost of equity** = CAPM (`risk-free + β × equity-risk-premium`), 7–16%
+  - **WACC** = market-weighted blend of cost of equity and after-tax cost of
+    debt, 7–14%
+  - **Fair P/E** = analyst forward P/E (5–40×)
+  - **Initial FCF growth** = analyst earnings-growth estimate (capped at 20%)
   - **Terminal growth** = long-run nominal anchor (~risk-free, capped 2–3%)
 
-  The exact values used are listed in the sidebar so nothing is hidden.
+  The exact values used — and how they were derived — are shown in the sidebar
+  so nothing is hidden.
 
 ---
 

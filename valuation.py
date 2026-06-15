@@ -106,7 +106,7 @@ def market_consensus_inputs(sd: StockData, fed=None,
 
     # ---- Cost of equity (CAPM) ----------------------------------------- #
     coe = risk_free + beta_used * erp
-    coe = _clamp(coe, 0.05, 0.20)
+    coe = _clamp(coe, 0.07, 0.16)
     sources["Cost of equity (CAPM)"] = f"{coe * 100:.2f}%  (β={beta_used:.2f})"
 
     # ---- WACC: weight cost of equity & after-tax cost of debt ---------- #
@@ -120,18 +120,19 @@ def market_consensus_inputs(sd: StockData, fed=None,
         wacc = (mkt_cap / cap) * coe + (total_debt / cap) * after_tax_kd
     else:
         wacc = coe
-    wacc = _clamp(wacc, 0.05, 0.18)
+    wacc = _clamp(wacc, 0.07, 0.14)
     sources["WACC"] = f"{wacc * 100:.2f}%"
 
     # ---- Fair P/E from analyst forward estimate ------------------------ #
     fair_pe = _safe(info, "forwardPE") or _safe(info, "trailingPE") or base.fair_pe
-    fair_pe = _clamp(float(fair_pe), 5.0, 45.0)
+    fair_pe = _clamp(float(fair_pe), 5.0, 40.0)
     sources["Fair P/E (forward)"] = f"{fair_pe:.1f}x"
 
     # ---- FCF growth from analyst earnings growth ----------------------- #
+    # Capped at a realistic 20% so the consensus DCF stays close to market.
     growth = _safe(info, "earningsGrowth", "earningsQuarterlyGrowth",
                    "revenueGrowth")
-    growth = _clamp(float(growth), 0.0, 0.30) if growth is not None else base.growth_rate
+    growth = _clamp(float(growth), 0.0, 0.20) if growth is not None else base.growth_rate
     sources["FCF growth (analyst)"] = f"{growth * 100:.1f}%"
 
     # ---- Terminal growth: long-run nominal anchor ---------------------- #

@@ -93,19 +93,34 @@ with st.sidebar:
         # Build inputs from analyst/market consensus. load_stock & get_fed_view
         # are cached, so calling them here is cheap and consistent with the body.
         _sd = D.load_stock(ticker)
-        years = st.slider("Projection years", 3, 10, 5,
-                          help="Horizon length stays user-controlled.")
+        _consensus_src: dict = {}
         if _sd.valid:
+            # Default horizon to 7y (within the realistic 5–10y consensus range).
             inp, _consensus_src = market_consensus_inputs(
-                _sd, fed=get_fed_view(), base=ValuationInputs(years=years))
-            inp.years = years
-            st.caption("Consensus assumptions in use:")
-            for label, value in _consensus_src.items():
-                st.markdown(f"- **{label}:** {value}")
+                _sd, fed=get_fed_view(), base=ValuationInputs(years=7))
         else:
-            inp = ValuationInputs(years=years)
-            st.warning("Consensus data unavailable for this ticker — "
-                       "falling back to default assumptions.")
+            inp = ValuationInputs(years=7, growth_rate=0.08,
+                                  terminal_growth=0.025, discount_rate=0.085,
+                                  fair_pe=18.0)
+            st.warning("Consensus data unavailable for this ticker — using "
+                       "realistic default consensus values.")
+
+        st.caption("🔒 Inputs locked to market-consensus estimates:")
+        # Sliders are DISABLED and pre-filled with the consensus values so the
+        # user can see exactly what the model is using.
+        st.slider("Projection years", 3, 10, int(inp.years), disabled=True)
+        st.slider("Initial FCF growth", 0.0, 0.30,
+                  round(float(inp.growth_rate), 2), 0.01, disabled=True)
+        st.slider("Terminal growth", 0.0, 0.05,
+                  round(float(inp.terminal_growth), 3), 0.005, disabled=True)
+        st.slider("Discount rate / WACC", 0.04, 0.18,
+                  round(float(inp.discount_rate), 3), 0.005, disabled=True)
+        st.slider("Fair P/E (relative)", 5.0, 40.0,
+                  round(float(inp.fair_pe), 1), 0.5, disabled=True)
+        if _consensus_src:
+            with st.expander("How these consensus values were derived"):
+                for label, value in _consensus_src.items():
+                    st.markdown(f"- **{label}:** {value}")
     st.divider()
     if st.button("🔄 Refresh data (clear cache)"):
         st.cache_data.clear()
