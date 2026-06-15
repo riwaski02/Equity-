@@ -8,3 +8,4 @@ env/
 .ipynb_checkpoints/
 *.log
 .streamlit/secrets.toml
+.fed_cache.json

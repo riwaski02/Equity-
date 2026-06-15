@@ -112,6 +112,16 @@ otherwise        →  market expects ON HOLD
 This is a transparent proxy for CME FedWatch (not a probability model), plus a
 10y−2y yield-curve flag for extra context.
 
+The panel is built to **never go blank**, using layered fallbacks:
+
+1. **Primary — Yahoo Finance** CBOE rate indices via `yfinance`
+   (`^IRX` 3M, `^FVX` 5Y, `^TNX` 10Y, `^TYX` 30Y; 2Y from the `2YY=F` future
+   or interpolated between 3M and 5Y). The x10 quoting convention is auto-normalized.
+2. **FRED** for the Fed Funds target band / effective rate (no key required).
+3. **Disk cache** (`.fed_cache.json`) — the last good snapshot is reloaded if
+   live feeds are down.
+4. **Hardcoded** last-known Fed Funds range as the final safety net.
+
 ---
 
 ## 📂 Project structure
