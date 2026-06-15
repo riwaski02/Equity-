@@ -329,6 +329,137 @@ else:
 
 
 # --------------------------------------------------------------------------- #
+# 9.5) Full Analysis & Metrics
+# --------------------------------------------------------------------------- #
+st.divider()
+st.header("🔬 Full Analysis & Metrics")
+st.caption("Historical financial evolution over the last 4–5 fiscal years, "
+           "extracted from Yahoo Finance statements & price history.")
+
+fin_hist = D.get_financial_history(sd)
+if fin_hist.empty:
+    st.info("Historical financial statements are not available for this ticker.")
+else:
+    yr_labels = [str(y) for y in fin_hist.index]
+
+    # ---- Financial Trends & Cash Flows --------------------------------- #
+    st.subheader("Financial Trends & Cash Flows")
+    t1, t2 = st.columns(2)
+
+    with t1:
+        st.markdown("**Net Income vs. Free Cash Flow**")
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=yr_labels, y=fin_hist["Net Income"],
+                             name="Net Income", marker_color="#2E86DE"))
+        fig.add_trace(go.Bar(x=yr_labels, y=fin_hist["FCF"],
+                             name="Free Cash Flow", marker_color="#1e8e3e"))
+        fig.update_layout(height=320, barmode="group", template="plotly_white",
+                          margin=dict(l=0, r=0, t=10, b=0),
+                          legend=dict(orientation="h", y=1.1),
+                          yaxis_title=sd.currency)
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Cash-conversion quality: FCF tracking (or exceeding) net "
+                   "income signals high-quality earnings.")
+
+    with t2:
+        st.markdown("**Revenue & Gross Margin %**")
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=yr_labels, y=fin_hist["Sales"], name="Revenue",
+                             marker_color="#8e7cc3"))
+        fig.add_trace(go.Scatter(x=yr_labels, y=fin_hist["Gross Margin %"],
+                                 name="Gross Margin %", yaxis="y2",
+                                 mode="lines+markers", line=dict(color="#ea8600", width=3)))
+        fig.update_layout(height=320, template="plotly_white",
+                          margin=dict(l=0, r=0, t=10, b=0),
+                          legend=dict(orientation="h", y=1.1),
+                          yaxis=dict(title=f"Revenue ({sd.currency})"),
+                          yaxis2=dict(title="Gross Margin %", overlaying="y",
+                                      side="right", showgrid=False))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Top-line growth vs. pricing power: a rising margin alongside "
+                   "rising sales is the strongest combination.")
+
+    # ---- Valuation & Multiples Evolution ------------------------------- #
+    st.subheader("Valuation Multiples Evolution")
+    mult_hist = D.get_multiples_history(sd, fin_hist)
+    if not mult_hist.empty and mult_hist[["P/E", "EV/EBITDA"]].notna().any().any():
+        m1, m2 = st.columns(2)
+        mlabels = [str(y) for y in mult_hist.index]
+        with m1:
+            st.markdown("**P/E (Price-to-Earnings)**")
+            fig = go.Figure(go.Scatter(x=mlabels, y=mult_hist["P/E"],
+                                       mode="lines+markers",
+                                       line=dict(color="#2E86DE", width=3)))
+            fig.update_layout(height=300, template="plotly_white",
+                              margin=dict(l=0, r=0, t=10, b=0), yaxis_title="x")
+            st.plotly_chart(fig, use_container_width=True)
+        with m2:
+            st.markdown("**EV/EBITDA**")
+            fig = go.Figure(go.Scatter(x=mlabels, y=mult_hist["EV/EBITDA"],
+                                       mode="lines+markers",
+                                       line=dict(color="#1e8e3e", width=3)))
+            fig.update_layout(height=300, template="plotly_white",
+                              margin=dict(l=0, r=0, t=10, b=0), yaxis_title="x")
+            st.plotly_chart(fig, use_container_width=True)
+        st.caption("Multiples use year-end prices and current share count "
+                   "(older years are indicative).")
+    else:
+        st.info("Not enough data to reconstruct historical multiples.")
+
+    # ---- Historical Price Ranges --------------------------------------- #
+    st.subheader("Historical Price Ranges (per year)")
+    pr = D.get_price_ranges_by_year(sd)
+    if not pr.empty:
+        p1, p2 = st.columns([1, 1])
+        with p1:
+            disp = pr.copy()
+            for col in ["High", "Low", "Close"]:
+                disp[col] = disp[col].apply(lambda x: D.fmt_number(x, prefix="$"))
+            disp["Range %"] = pr["Range %"].apply(lambda x: D.fmt_number(x, suffix="%"))
+            disp.index = disp.index.astype(str)
+            st.dataframe(disp, use_container_width=True)
+        with p2:
+            fig = go.Figure()
+            yl = [str(y) for y in pr.index]
+            fig.add_trace(go.Scatter(x=yl, y=pr["High"], name="High",
+                                     mode="lines+markers", line=dict(color="#1e8e3e")))
+            fig.add_trace(go.Scatter(x=yl, y=pr["Close"], name="Close",
+                                     mode="lines+markers", line=dict(color="#2E86DE")))
+            fig.add_trace(go.Scatter(x=yl, y=pr["Low"], name="Low",
+                                     mode="lines+markers", line=dict(color="#d93025")))
+            fig.update_layout(height=300, template="plotly_white",
+                              margin=dict(l=0, r=0, t=10, b=0),
+                              legend=dict(orientation="h", y=1.1),
+                              yaxis_title=f"Price ({sd.currency})")
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Price history unavailable for yearly ranges.")
+
+    # ---- Business Deep-Dive Table -------------------------------------- #
+    st.subheader("Business Deep-Dive (by year)")
+    table = fin_hist.T                              # rows = metrics, cols = years
+    year_cols = [str(c) for c in table.columns]
+
+    def _cell(metric, value):
+        if metric == "Gross Margin %":
+            return D.fmt_number(value, suffix="%")
+        if metric == "EPS":
+            return D.fmt_number(value, prefix="$", decimals=2)
+        return D.fmt_number(value, prefix="$")      # money metrics
+
+    order = ["Sales", "Gross Profit", "Gross Margin %", "EBITDA",
+             "Net Income", "FCF", "EPS"]
+    # Build a fresh string DataFrame so dtypes never clash.
+    disp = pd.DataFrame(
+        {year_cols[i]: [_cell(m, table.loc[m].iloc[i]) for m in order
+                        if m in table.index]
+         for i in range(len(year_cols))},
+        index=[m for m in order if m in table.index],
+    )
+    st.dataframe(disp, use_container_width=True)
+
+
+# --------------------------------------------------------------------------- #
 # 10) Our own valuation
 # --------------------------------------------------------------------------- #
 st.divider()

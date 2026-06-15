@@ -335,3 +335,154 @@ def get_news(sd: StockData, limit: int = 8) -> list[dict]:
         if len(out) >= limit:
             break
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Historical analysis ("Full Analysis & Metrics" section)
+# --------------------------------------------------------------------------- #
+def _row_series(df: pd.DataFrame, *names) -> Optional[pd.Series]:
+    """Return the full (date-indexed) series of the first matching row."""
+    if df is None or df.empty:
+        return None
+    for n in names:
+        if n in df.index:
+            s = df.loc[n].dropna()
+            if not s.empty:
+                return s
+    return None
+
+
+def _by_year(series: Optional[pd.Series]) -> dict:
+    """Collapse a date-indexed series into {year: value}."""
+    out: dict[int, float] = {}
+    if series is None:
+        return out
+    for idx, val in series.items():
+        try:
+            year = idx.year
+        except AttributeError:
+            try:
+                year = pd.to_datetime(idx).year
+            except Exception:
+                continue
+        try:
+            out[year] = float(val)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def get_financial_history(sd: StockData) -> pd.DataFrame:
+    """
+    Build a year-indexed DataFrame of core fundamentals from the annual
+    statements. Columns: Sales, Gross Profit, Gross Margin %, EBITDA,
+    Net Income, FCF, EPS. Rows are years (ascending).
+    """
+    fin, cf = sd.financials, sd.cashflow
+    if (fin is None or fin.empty) and (cf is None or cf.empty):
+        return pd.DataFrame()
+
+    sales = _by_year(_row_series(fin, "Total Revenue", "Operating Revenue"))
+    gross = _by_year(_row_series(fin, "Gross Profit"))
+    net_income = _by_year(_row_series(
+        fin, "Net Income", "Net Income Common Stockholders",
+        "Net Income Continuous Operations"))
+    eps = _by_year(_row_series(fin, "Diluted EPS", "Basic EPS"))
+
+    # EBITDA: prefer the reported row, else Operating Income + D&A.
+    ebitda = _by_year(_row_series(fin, "EBITDA", "Normalized EBITDA"))
+    if not ebitda:
+        op = _by_year(_row_series(fin, "Operating Income",
+                                  "Total Operating Income As Reported"))
+        da = _by_year(_row_series(cf, "Depreciation And Amortization",
+                                  "Depreciation Amortization Depletion",
+                                  "Depreciation"))
+        ebitda = {y: op[y] + da.get(y, 0.0) for y in op} if op else {}
+
+    # FCF: reported row, else Operating Cash Flow + CapEx (capex is negative).
+    fcf = _by_year(_row_series(cf, "Free Cash Flow"))
+    if not fcf:
+        ocf = _by_year(_row_series(cf, "Operating Cash Flow",
+                                   "Total Cash From Operating Activities"))
+        capex = _by_year(_row_series(cf, "Capital Expenditure",
+                                     "Capital Expenditures"))
+        if ocf:
+            fcf = {y: ocf[y] + capex.get(y, 0.0) for y in ocf}
+
+    years = sorted(set(sales) | set(net_income) | set(ebitda) | set(fcf) | set(eps))
+    if not years:
+        return pd.DataFrame()
+
+    rows = []
+    for y in years:
+        rev = sales.get(y)
+        gp = gross.get(y)
+        gm = (gp / rev * 100) if (gp is not None and rev) else None
+        rows.append({
+            "Sales": rev,
+            "Gross Profit": gp,
+            "Gross Margin %": gm,
+            "EBITDA": ebitda.get(y),
+            "Net Income": net_income.get(y),
+            "FCF": fcf.get(y),
+            "EPS": eps.get(y),
+        })
+    df = pd.DataFrame(rows, index=years)
+    df.index.name = "Year"
+    return df.tail(5)
+
+
+def get_price_ranges_by_year(sd: StockData) -> pd.DataFrame:
+    """High / Low / Close per calendar year for the last 5 years."""
+    h = sd.history
+    if h is None or h.empty:
+        return pd.DataFrame()
+    g = h.groupby(h.index.year)
+    df = pd.DataFrame({
+        "High": g["High"].max(),
+        "Low": g["Low"].min(),
+        "Close": g["Close"].last(),
+    })
+    df["Range %"] = (df["High"] - df["Low"]) / df["Low"] * 100
+    df.index.name = "Year"
+    return df.tail(5)
+
+
+def get_multiples_history(sd: StockData, fin_hist: pd.DataFrame) -> pd.DataFrame:
+    """
+    Approximate the historical evolution of P/E and EV/EBITDA.
+
+    P/E       = year-end close / EPS that fiscal year
+    EV/EBITDA = (year-end market cap + net debt) / EBITDA
+
+    Note: market cap uses *current* shares outstanding as an approximation
+    (Yahoo does not expose a reliable per-year share count), so older years
+    are indicative rather than exact.
+    """
+    if fin_hist is None or fin_hist.empty or sd.history is None or sd.history.empty:
+        return pd.DataFrame()
+
+    h = sd.history
+    year_close = h.groupby(h.index.year)["Close"].last()
+    shares = _safe(sd.info, "sharesOutstanding")
+    bs = sd.balance_sheet
+    debt = _by_year(_row_series(bs, "Total Debt", "Long Term Debt And Capital Lease Obligation"))
+    cash = _by_year(_row_series(
+        bs, "Cash And Cash Equivalents",
+        "Cash Cash Equivalents And Short Term Investments"))
+
+    rows = []
+    for y in fin_hist.index:
+        price = year_close.get(y)
+        eps = fin_hist.loc[y, "EPS"]
+        ebitda = fin_hist.loc[y, "EBITDA"]
+        pe = (price / eps) if (price and eps and eps > 0) else None
+        ev_ebitda = None
+        if price and shares and ebitda and ebitda > 0:
+            mcap = price * shares
+            net_debt = (debt.get(y, 0.0) or 0.0) - (cash.get(y, 0.0) or 0.0)
+            ev_ebitda = (mcap + net_debt) / ebitda
+        rows.append({"P/E": pe, "EV/EBITDA": ev_ebitda})
+    df = pd.DataFrame(rows, index=fin_hist.index)
+    df.index.name = "Year"
+    return df

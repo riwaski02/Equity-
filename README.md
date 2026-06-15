@@ -23,6 +23,7 @@ estimate**.
 | 🌊 **Cash flow** | Operating CF, CapEx, **Free Cash Flow (FCFF)** and **Free Cash Flow to Equity (FCFE)**, per-share & FCF yield |
 | 🎯 **Analyst consensus** | Recommendation, mean/median/high/low price targets, upside, rating distribution |
 | 📰 **Latest news** | Most recent headlines for the ticker, with links |
+| 🔬 **Full Analysis & Metrics** | Historical evolution over 4–5 years: **Net Income vs. FCF**, **Revenue & Gross Margin %**, **P/E & EV/EBITDA multiples history**, **yearly price ranges (High/Low/Close)**, and a **business deep-dive table** (Sales, Gross Profit, Gross Margin %, EBITDA, Net Income, FCF, EPS by year) |
 | 🧮 **Our own valuation** | A blended **DCF (FCFF) + DCF (FCFE) + relative (P/E & EV/EBITDA)** fair value, upside/downside, and a verdict |
 
 Data comes from **Yahoo Finance** (via `yfinance`) and the **Federal Reserve (FRED)** —
